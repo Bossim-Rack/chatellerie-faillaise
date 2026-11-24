@@ -221,7 +221,7 @@
     if (niv('salaires') >= 2) { const n = S.d.membres.filter(x => x.actif && grade(x.grade).garde && statut(x.statut).paye && !paiement('salaire', x.id, sc) && salaireDe(x) > 0).length; if (n) afaire.push(['salaires', n + ' salaire(s) à verser cette semaine']); }
     ['entreprises', 'thaneries'].forEach(p => { if (niv(p) >= 2 && S.d.etablissements) { const n = S.d.etablissements.filter(e => e.actif === '1' && (e.categorie === 'thanerie') === (p === 'thaneries') && !etatEtab(e, sc).d).length; if (n) afaire.push([p, n + ' ' + (p === 'thaneries' ? 'thanerie(s)' : 'entreprise(s)') + ' sans déclaration cette semaine']); } });
     if (niv('citoyennete') >= 2 && S.d.citoyens) { const n = S.d.citoyens.filter(c => c.actif === '1' && etatCit(c).retard.length).length; if (n) afaire.push(['citoyennete', n + ' citoyen(s) en retard de paiement']); }
-    $('page').innerHTML = entete('Bienvenue, ' + m.nom, 'Nous sommes le ' + esc(fmtJ(S.d.aujourdhui)) + ', ' + esc(fmtSem(sc)) + '.') +
+    $('page').innerHTML = entete('Bienvenue, ' + m.nom, 'Nous sommes le ' + esc(fmtJ(S.d.aujourdhui)) + ', ' + esc(fmtSem(sc))) +
       (chiffres.length ? '<div class="chiffres">' + chiffres.map(c => '<div class="chiffre' + (c[2] ? ' alerte' : '') + '"><b>' + esc(c[1]) + '</b><small>' + esc(c[0]) + '</small></div>').join('') + '</div>' : '') +
       '<div class="grille">' +
       '<div class="carte"><h3>Mon service</h3><p>' + badgeGrade(m.grade) + ' ' + badgeStatut(m.statut) + '</p>' +

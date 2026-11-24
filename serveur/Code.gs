@@ -262,7 +262,7 @@ function mdpValide_(m) {
 }
 function listeConnexion_() {
   const gs = grades_();
-  return lire_('Comptes').filter(c => c.actif === '1').map(c => ({ nom: c.nom, nouveau: !c.hash, rang: (gs.find(g => g.id === c.grade) || {}).rang || 0 }))
+  return lire_('Comptes').filter(c => c.actif === '1' && !estDemo_(c)).map(c => ({ nom: c.nom, nouveau: !c.hash, rang: (gs.find(g => g.id === c.grade) || {}).rang || 0 }))
     .sort((a, b) => b.rang - a.rang || a.nom.localeCompare(b.nom, 'fr')).map(x => ({ nom: x.nom, nouveau: x.nouveau }));
 }
 function connexion_(a) {
@@ -272,7 +272,7 @@ function connexion_(a) {
   const essais = Number(cache.get(ce) || 0);
   if (essais >= 5) throw new Error('Trop d\'essais manqués : réessayez dans 10 minutes.');
   return verrou_(() => {
-    const c = lire_('Comptes').find(x => x.actif === '1' && normal_(x.nom) === cle);
+    const c = lire_('Comptes').find(x => x.actif === '1' && !estDemo_(x) && normal_(x.nom) === cle);
     const echec = () => { cache.put(ce, String(essais + 1), 600); throw new Error('Nom ou mot de passe incorrect.'); };
     if (!c) echec();
     let premiere = false;
@@ -606,4 +606,187 @@ function encaisserCitoyennete_(qui, a) {
   semaines.forEach(s => payer_(qui, 'citoyennete', c.id, s, m, 'Citoyenneté ' + c.nom, a.note));
   journal_(qui.nom, 'Citoyenneté', c.nom + ' : ' + semaines.length + ' semaine(s), ' + (m * semaines.length) + ' septimes');
   return donnees_(qui);
+}
+
+// =====================================================================
+//  Données de démonstration (fictives)
+//  « demo » : remplit l'appli d'exemples sur les 6 dernières semaines.
+//  « viderDemo » : retire tout ce qui a été créé par « demo ».
+//  Les comptes de démo ne peuvent pas se connecter.
+// =====================================================================
+const estDemo_ = x => /^demo/.test(String(x && x.id || ''));
+
+/** Ajoute plusieurs lignes d'un coup (beaucoup plus rapide qu'une par une). */
+function ajouterLignes_(nom, objets) {
+  if (!objets.length) return;
+  const sh = classeur_().getSheetByName(nom), ent = TABLES[nom];
+  const v = objets.map(o => ent.map(h => o[h] == null ? '' : (typeof o[h] === 'object' ? JSON.stringify(o[h]) : String(o[h]))));
+  sh.getRange(sh.getLastRow() + 1, 1, v.length, ent.length).setNumberFormat('@').setValues(v);
+  if (MEMO_.t) delete MEMO_.t[nom];
+}
+
+function demo() {
+  verrou_(() => {
+    MEMO_ = {};
+    if (!lire_('Grades').length) throw new Error('Lance d\'abord « installer ».');
+    if (lire_('Comptes').some(estDemo_)) throw new Error('Les données de démo sont déjà là. Lance « viderDemo » pour les retirer avant de recommencer.');
+    let graine = 7;
+    const hasard = () => { graine = (graine * 16807) % 2147483647; return (graine - 1) / 2147483646; };
+    const entre = (a, b) => Math.round(a + hasard() * (b - a));
+    const PAR = 'Démo', LE = maintenant_();
+    const sc = lundi_(aujourdhui_());
+    const sem = k => { const d = new Date(sc + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 7 * k); return d.toISOString().slice(0, 10); };
+    const jour = (s, j) => { const d = new Date(s + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + j); return d.toISOString().slice(0, 10); };
+    const S = [sem(-5), sem(-4), sem(-3), sem(-2), sem(-1), sem(0)];   // 6 semaines, la dernière = en cours
+    const id = p => 'demo' + p + Utilities.getUuid().replace(/-/g, '').slice(0, 8);
+    const gs = grades_(), sal = g => (gs.find(x => x.id === g) || {}).salaire || 0, garde = g => !!(gs.find(x => x.id === g) || {}).garde;
+    const sts = statuts_(), paye = st => !!(sts.find(x => x.id === st) || {}).paye;
+    const comptes = [], missions = [], etabs = [], decls = [], maisons = [], citoyens = [], paiements = [], tresor = [];
+
+    // Paiement + mouvement au trésor
+    const payer = (type, cible, semaine, montant, libelle) => {
+      const pid = id('p'), tid = id('t');
+      const sens = type === 'salaire' ? 'sortie' : 'entree';
+      const cat = { taxe: 'Taxes', loyer_etab: 'Loyers', loyer_maison: 'Loyers', citoyennete: 'Citoyenneté', salaire: 'Salaires' }[type];
+      tresor.push({ id: tid, date: jour(semaine, entre(0, 4)), semaine, sens, categorie: cat, montant: String(montant), libelle, ref: pid, par: PAR, le: LE });
+      paiements.push({ id: pid, type, cible, semaine, montant: String(montant), mouvement: tid, note: '', par: PAR, le: LE });
+    };
+    const mouv = (sens, categorie, montant, libelle, semaine) => tresor.push({ id: id('t'), date: jour(semaine, entre(0, 4)), semaine, sens, categorie, montant: String(montant), libelle, ref: '', par: PAR, le: LE });
+
+    // ---------- Personnel ----------
+    [
+      ['Dame Helga', 'intendant', 'actif', 0, 'Tient les registres du trésor.'],
+      ['Hrolf Main-de-Fer', 'capitaine', 'actif', 50, 'Capitaine de la garde depuis dix hivers.'],
+      ['Brynja la Rousse', 'lieutenant', 'actif', 20, ''],
+      ['Aldric le Percepteur', 'percepteur', 'actif', 0, 'Collecte les taxes du port.'],
+      ['Torvald Œil-de-Corbeau', 'sergent', 'actif', 10, ''],
+      ['Eirik', 'garde', 'actif', 0, ''],
+      ['Solveig', 'garde', 'actif', 15, 'Meilleure archère de la garde.'],
+      ['Gunnar le Grand', 'garde', 'blesse', 0, 'Blessé à la jambe lors de l\'escorte du convoi.'],
+      ['Ingrid', 'garde', 'conge', 0, 'En congé chez sa famille, à Rorikbourg.'],
+      ['Kjell', 'recrue', 'actif', 0, ''],
+      ['Astrid', 'recrue', 'actif', 0, ''],
+      ['Ulfric Pied-Léger', 'garde', 'suspendu', 0, 'Suspendu : ivre pendant son tour de garde.']
+    ].forEach(c => comptes.push({ id: id('u'), nom: c[0], grade: c[1], statut: c[2], prime: String(c[3]), hash: '', sel: '', actif: '1', note: c[4], cree_le: LE, modifie_par: PAR, modifie_le: LE }));
+    const qui = n => comptes.find(c => c.nom.indexOf(n) === 0).id;
+
+    // Soldes versés les 5 semaines passées (pas la semaine en cours)
+    S.slice(0, 5).forEach((s, i) => comptes.forEach(c => {
+      if (!garde(c.grade) || !paye(c.statut)) return;
+      if (c.nom === 'Gunnar le Grand' && i < 2) return;
+      const m = sal(c.grade) + Number(c.prime);
+      if (m > 0) payer('salaire', c.id, s, m, 'Solde de ' + c.nom);
+    }));
+
+    // ---------- Missions ----------
+    [
+      ['Patrouille des remparts', 'Patrouille', 'Remparts nord', 0, 0, 'en_cours', ['Torvald', 'Eirik', 'Kjell'], 'Ronde de nuit, relève toutes les quatre heures.', ''],
+      ['Escorte du convoi de minerai', 'Escorte', 'Route de Roche-Noire', -2, -2, 'terminee', ['Hrolf', 'Gunnar', 'Solveig'], 'Escorter les chariots jusqu\'au port.', 'Embuscade de bandits au gué. Deux bandits arrêtés, Gunnar blessé. Le minerai est arrivé intact.'],
+      ['Enquête sur les vols au port', 'Enquête', 'Comptoir du Port', -1, 1, 'en_cours', ['Brynja', 'Solveig'], 'Des caisses disparaissent la nuit. Interroger les dockers.', ''],
+      ['Garde de la porte du Val', 'Garde de porte', 'Porte du Val', 1, 1, 'prevue', ['Astrid', 'Eirik'], '', ''],
+      ['Entraînement des recrues', 'Entraînement', 'Cour du château', 2, 2, 'prevue', ['Torvald', 'Kjell', 'Astrid'], 'Maniement du bouclier et de la lance.', ''],
+      ['Arrestation du contrebandier Vigge', 'Arrestation', 'Pêcheries', -3, -3, 'annulee', ['Hrolf', 'Brynja'], '', 'Le suspect a fui par la mer avant notre arrivée.']
+    ].forEach(m => missions.push({ id: id('m'), titre: m[0], type: m[1], lieu: m[2], debut: jour(sc, 7 * m[3] + 1), fin: jour(sc, 7 * m[4] + 4), statut: m[5], membres: m[6].map(qui).join(','), description: m[7], compte_rendu: m[8], modifie_par: PAR, modifie_le: LE }));
+
+    // ---------- Entreprises et thaneries ----------
+    // [catégorie, nom, type, propriétaire, adresse, taux, loyer, actif, recettes min-max, semaines oubliées]
+    const taux = Number(reglages_().taux_defaut) || 10;
+    [
+      ['entreprise', 'La Jument Pie', 'Auberge', 'Hulda', 'Place du Marché', '', 40, '1', [300, 520], []],
+      ['entreprise', 'Forge Hardi', 'Forge', 'Adrianne', 'Rue des Enclumes', '12', 30, '1', [250, 400], [3]],
+      ['entreprise', 'Herboristerie Racine-Vive', 'Herboriste', 'Arcadia', 'Ruelle des Simples', '', 15, '1', [80, 150], [1, 4]],
+      ['entreprise', 'Comptoir du Port', 'Négoce', 'Avulstein', 'Quai Est', '8', 60, '1', [600, 1100], [4]],
+      ['entreprise', 'Écuries du Val', 'Écurie', 'Skulvar', 'Porte du Val', '', 20, '', [0, 0], []],
+      ['thanerie', 'Ferme de Bois-Clair', 'Ferme', 'Thane Ronald', 'Vallon de Bois-Clair', '5', 0, '1', [200, 300], []],
+      ['thanerie', 'Mine de Roche-Noire', 'Mine', 'Thane Ogmund', 'Roche-Noire', '15', 25, '1', [500, 800], [2, 3, 4]],
+      ['thanerie', 'Pêcheries de Faillaise', 'Pêcherie', 'Thane Orla', 'Anse des Mouettes', '', 10, '1', [150, 260], [4]]
+    ].forEach(e => {
+      const o = { id: id('e'), categorie: e[0], nom: e[1], type: e[2], proprietaire: e[3], adresse: e[4], taux: e[5], loyer: String(e[6]), depuis: S[0], actif: e[7], note: e[7] ? '' : 'Fermée depuis l\'incendie.', modifie_par: PAR, modifie_le: LE };
+      etabs.push(o);
+      if (!e[7]) return;
+      const tx = Number(e[5] !== '' ? e[5] : taux);
+      S.forEach((s, i) => {
+        const oubli = e[9].indexOf(i) >= 0, cour = i === 5;
+        if (oubli) {
+          if (i === 4 && e[1] === 'Comptoir du Port') { const r = entre(e[8][0], e[8][1]); decls.push({ id: id('d'), etablissement: o.id, semaine: s, recettes: String(r), taux: String(tx), taxe: String(Math.round(r * tx) / 100), par: PAR, le: LE }); }
+          return;   // semaine non déclarée / non payée → retard
+        }
+        if (cour && hasard() < 0.4) return;    // pas encore déclaré cette semaine
+        const r = entre(e[8][0], e[8][1]), t = Math.round(r * tx) / 100;
+        decls.push({ id: id('d'), etablissement: o.id, semaine: s, recettes: String(r), taux: String(tx), taxe: String(t), par: PAR, le: LE });
+        if (!(cour && hasard() < 0.5)) payer('taxe', o.id, s, t, 'Taxe ' + o.nom + ' (' + tx + ' % de ' + r + ')');
+        if (e[6] > 0 && !(cour && hasard() < 0.5)) payer('loyer_etab', o.id, s, e[6], 'Loyer ' + o.nom);
+      });
+    });
+
+    // ---------- Maisons ----------
+    [
+      ['Maison du Pont', 'Pont de pierre', 'Sigrid', 12, [0, 1, 2, 3, 4, 5]],
+      ['Maison aux Volets Bleus', 'Rue Basse', 'Famille Olafsson', 15, [0, 1, 2, 3, 4]],
+      ['Chaumière du Moulin', 'Chemin du Moulin', 'Hakon le Meunier', 8, [0, 1, 2]],
+      ['Maison de la Tour', 'Rue de la Tour', 'Freydis', 20, [0, 1, 2, 3, 4, 5]],
+      ['Masure du Quai', 'Quai Ouest', 'Bjorn le Pêcheur', 6, [0]],
+      ['Maison du Tanneur', 'Rue des Peaux', '', 10, []]
+    ].forEach(h => {
+      const o = { id: id('h'), nom: h[0], adresse: h[1], occupant: h[2], loyer: String(h[3]), depuis: S[0], actif: h[2] ? '1' : '', note: h[2] ? '' : 'Vide depuis le départ du tanneur.', modifie_par: PAR, modifie_le: LE };
+      maisons.push(o);
+      h[4].forEach(i => payer('loyer_maison', o.id, S[i], h[3], 'Loyer ' + o.nom + (h[2] ? ' (' + h[2] + ')' : '')));
+    });
+
+    // ---------- Citoyenneté ----------
+    // [nom, montant ('' = défaut), semaines payées (index dans S, 6+ = à l'avance), actif, note]
+    const cit = Number(reglages_().citoyennete) || 20;
+    [
+      ['Sigrid', '', [0, 1, 2, 3, 4, 5], '1', ''],
+      ['Hakon le Meunier', '', [0, 1, 2], '1', 'Promet de payer à la moisson.'],
+      ['Freydis', '', [0, 1, 2, 3, 4, 5, 6, 7, 8], '1', 'A payé un mois d\'avance.'],
+      ['Bjorn le Pêcheur', '10', [0], '1', 'Montant réduit : veuf avec quatre enfants.'],
+      ['Thorgrim', '', [0, 1, 2, 3, 4], '1', ''],
+      ['Famille Olafsson', '45', [0, 1, 2, 3, 4, 5], '1', 'Citoyenneté familiale (3 adultes).'],
+      ['Ragnhild', '', [], '1', 'Arrivée récemment, n\'a encore rien payé.'],
+      ['Vigge', '', [0, 1], '', 'Parti — recherché pour contrebande.']
+    ].forEach(c => {
+      const o = { id: id('c'), nom: c[0], montant: c[1], depuis: S[0], actif: c[3], note: c[4], modifie_par: PAR, modifie_le: LE };
+      citoyens.push(o);
+      const m = c[1] !== '' ? Number(c[1]) : cit;
+      c[2].forEach(i => payer('citoyennete', o.id, i < 6 ? S[i] : jour(S[5], 7 * (i - 5)), m, 'Citoyenneté ' + o.nom));
+    });
+
+    // ---------- Trésor : autres mouvements ----------
+    mouv('entree', 'Fonds de départ', 8000, 'Dotation du Jarl pour l\'ouverture du registre', S[0]);
+    mouv('sortie', 'Équipement', 420, 'Achat de cottes de mailles (6)', S[1]);
+    mouv('entree', 'Amendes', 75, 'Amende : rixe à La Jument Pie', S[2]);
+    mouv('sortie', 'Entretien', 180, 'Réparation de la porte du Val', S[3]);
+    mouv('sortie', 'Soins', 60, 'Guérisseur pour Gunnar', S[3]);
+    mouv('entree', 'Amendes', 120, 'Contrebande saisie au port', S[4]);
+    mouv('sortie', 'Vivres', 95, 'Rations de la garde', S[5]);
+
+    ajouterLignes_('Comptes', comptes); ajouterLignes_('Missions', missions); ajouterLignes_('Etablissements', etabs);
+    ajouterLignes_('Declarations', decls); ajouterLignes_('Maisons', maisons); ajouterLignes_('Citoyens', citoyens);
+    ajouterLignes_('Paiements', paiements); ajouterLignes_('Tresor', tresor);
+    const r = lire_('Reglages').find(x => x.id === 'lancement');
+    if (r) { r.valeur = S[0]; ecrire_('Reglages', r); } else ecrire_('Reglages', { id: 'lancement', valeur: S[0] });
+    journal_('Démo', 'Données de démo ajoutées', comptes.length + ' comptes, ' + missions.length + ' missions, ' + etabs.length + ' établissements, ' + maisons.length + ' maisons, ' + citoyens.length + ' citoyens, ' + paiements.length + ' paiements');
+    Logger.log('Démo prête : ' + paiements.length + ' paiements, ' + tresor.length + ' mouvements. Début du registre : ' + S[0]);
+  });
+}
+
+function viderDemo() {
+  verrou_(() => {
+    MEMO_ = {};
+    let n = 0;
+    ['Comptes', 'Missions', 'Etablissements', 'Declarations', 'Maisons', 'Citoyens', 'Paiements', 'Tresor'].forEach(t => {
+      const l = lire_(t).filter(estDemo_).map(x => x._ligne);
+      if (!l.length) return;
+      n += l.length;
+      // suppression par blocs de lignes contiguës (plus rapide)
+      const sh = classeur_().getSheetByName(t);
+      l.sort((a, b) => b - a);
+      let i = 0;
+      while (i < l.length) { let j = i; while (j + 1 < l.length && l[j + 1] === l[j] - 1) j++; sh.deleteRows(l[j], j - i + 1); i = j + 1; }
+      delete MEMO_.t[t];
+    });
+    journal_('Démo', 'Données de démo retirées', n + ' lignes');
+    Logger.log(n + ' lignes de démo retirées. Pense à régler « Début du registre » dans Grades et droits.');
+  });
 }
