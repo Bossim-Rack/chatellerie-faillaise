@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Châtellerie de Faillaise</title>
+  <meta name="description" content="Gestion de la Châtellerie de Faillaise : garde, missions, salaires, taxes, loyers, citoyenneté et trésor.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 4 8 14v16c0 15 10 26 24 30 14-4 24-15 24-30V14z' fill='%23b8862e'/%3E%3Cpath d='M32 12 16 19v11c0 10 7 18 16 21 9-3 16-11 16-21V19z' fill='%231c1712'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
+</head>
+<body>
+  <header class="barre">
+    <button class="menu-mobile" id="menu-mobile" aria-label="Ouvrir le menu" hidden>☰</button>
+    <div class="blason" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M32 4 8 14v16c0 15 10 26 24 30 14-4 24-15 24-30V14z" fill="currentColor"/><path d="M32 12 16 19v11c0 10 7 18 16 21 9-3 16-11 16-21V19z" fill="var(--fond)"/><path d="M24 30h16M32 22v18" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></div>
+    <div class="titre"><h1>Châtellerie de Faillaise</h1><span>Registre de la garde et du trésor</span></div>
+    <div class="moi" id="moi"></div>
+  </header>
+
+  <div class="corps">
+    <nav class="nav" id="nav" aria-label="Pages"></nav>
+    <main id="page" tabindex="-1"><div class="chargement">Ouverture du registre…</div></main>
+  </div>
+
+  <!-- Connexion -->
+  <div class="modale" id="m-connexion" hidden role="dialog" aria-modal="true" aria-labelledby="cx-titre">
+    <form class="boite etroite" id="cx-form" novalidate>
+      <div class="blason grand" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M32 4 8 14v16c0 15 10 26 24 30 14-4 24-15 24-30V14z" fill="currentColor"/><path d="M32 12 16 19v11c0 10 7 18 16 21 9-3 16-11 16-21V19z" fill="var(--panneau)"/><path d="M24 30h16M32 22v18" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></div>
+      <h2 id="cx-titre">Entrer au registre</h2>
+      <p class="aide">Réservé aux membres de la Châtellerie.</p>
+      <label class="champ"><span>Nom</span><select id="cx-nom"><option value="">Chargement…</option></select></label>
+      <label class="champ"><span id="cx-mdp-l">Mot de passe</span><input id="cx-mdp" type="password" autocomplete="current-password"></label>
+      <label class="champ" id="cx-conf-b" hidden><span>Confirmez votre mot de passe</span><input id="cx-conf" type="password" autocomplete="new-password"></label>
+      <p class="aide" id="cx-premiere" hidden>Première connexion : choisissez votre mot de passe (4 caractères minimum). Il vous servira à chaque connexion.</p>
+      <p class="erreur" id="cx-erreur" role="alert"></p>
+      <button class="btn or large" id="cx-ok" type="submit">Entrer</button>
+    </form>
+  </div>
+
+  <!-- Fenêtre générique -->
+  <div class="modale" id="m-gen" hidden role="dialog" aria-modal="true" aria-labelledby="mg-titre">
+    <div class="boite" id="mg-boite">
+      <h2 id="mg-titre"></h2>
+      <div class="defile" id="mg-corps"></div>
+      <p class="erreur" id="mg-erreur" role="alert"></p>
+      <div class="boutons" id="mg-boutons"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>

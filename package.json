@@ -1,0 +1,21 @@
+{
+  "name": "chatellerie-faillaise",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Châtellerie de Faillaise : page sur GitHub Pages (docs/) + serveur Google Apps Script avec Google Sheets (serveur/)",
+  "type": "module",
+  "scripts": {
+    "apercu": "node outils/apercu.mjs",
+    "connexion": "clasp login",
+    "serveur:creer": "node outils/creer-serveur.mjs",
+    "serveur:envoyer": "clasp push -f",
+    "serveur:publier": "node outils/publier-serveur.mjs",
+    "site:publier": "node outils/publier-site.mjs"
+  },
+  "devDependencies": {
+    "@google/clasp": "2.4.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
