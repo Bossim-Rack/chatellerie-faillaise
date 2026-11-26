@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "apercu": "node outils/apercu.mjs",
+    "apercu:demo": "node outils/apercu-demo.mjs",
     "connexion": "clasp login",
     "serveur:creer": "node outils/creer-serveur.mjs",
     "serveur:envoyer": "clasp push -f",

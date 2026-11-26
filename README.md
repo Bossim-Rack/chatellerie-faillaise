@@ -1,7 +1,11 @@
 # Châtellerie de Faillaise
 
-Registre de la Châtellerie : personnel de garde (grades, statuts, soldes, primes), missions, versement des soldes chaque semaine, taxes des entreprises et des thaneries (% des recettes déclarées), loyers des entreprises et des maisons, citoyenneté hebdomadaire, trésor et journal.
-Chaque page peut être **invisible**, en **lecture seule** ou **modifiable** selon le grade. Le **Jarl** a tous les droits et règle les autres grades dans « Grades et droits ».
+Registre de la Châtellerie :
+
+- **La garde** : personnel (grades, statuts, soldes, primes), missions et **rapports de mission**, **planning des gardes** (qui, où, quel créneau), **armurerie** (stock, prêts, retours, retenues sur solde), versement des soldes.
+- **Justice** : **lois** (textes, catégories, recherche par mots-clés), **barème des peines** modifiable, **affaires** et **casier** par personne, **amendes** encaissées au trésor, **prison** (cellules, date de sortie, évasions), **avis de recherche** avec prime.
+- **Finances** : taxes des entreprises et des thaneries (% des recettes déclarées), loyers, citoyenneté hebdomadaire, trésor et **bilan** (graphiques, prévision de la semaine suivante, classement des retards, export CSV).
+- **Administration** : **annonces** sur l'accueil (pour tous ou certains grades), comptes, journal, grades et droits.
 
 - **La page** (dossier `docs/`) est hébergée sur **GitHub Pages**.
 - **Le serveur** (dossier `serveur/`) est un script **Google Apps Script** qui range les données dans un **Google Sheets** créé tout seul (« Châtellerie de Faillaise — Données »).
@@ -81,6 +85,10 @@ Tu peux ajouter un message : `npm run site:publier -- "Nouvelle page"`.
 ---
 
 ## Bon à savoir
+
+- **Nouvelles pages et droits** : les grades existants reçoivent des droits proposés sur les pages ajoutées (Planning, Armurerie, Justice, Prison, Avis de recherche, Bilan, Annonces). Le Jarl les ajuste dans « Grades et droits ».
+- **Barème** : un barème de départ (19 infractions, du délit mineur au crime) est installé à la première ouverture ; il se modifie dans Justice → Barème des peines.
+- **Retenues sur solde** : un équipement perdu ou abîmé peut entraîner une retenue, prélevée automatiquement au prochain versement du solde (annuler ce versement remet la retenue à prélever).
 
 - **Mot de passe oublié** : un compte qui a le droit de modifier « Comptes » coche « Réinitialiser le mot de passe » ; la personne en choisira un nouveau à sa prochaine connexion.
 - **Retards** : comptés à partir du « Début du registre » (ou de la date « depuis » de chaque fiche, si elle est plus récente). La semaine en cours est « à payer », pas « en retard ».

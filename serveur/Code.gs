@@ -29,12 +29,32 @@ const TABLES = {
   Declarations: ['id', 'etablissement', 'semaine', 'recettes', 'taux', 'taxe', 'par', 'le'],
   Paiements: ['id', 'type', 'cible', 'semaine', 'montant', 'mouvement', 'note', 'par', 'le'],
   Tresor: ['id', 'date', 'semaine', 'sens', 'categorie', 'montant', 'libelle', 'ref', 'par', 'le'],
+  Bareme: ['id', 'categorie', 'nom', 'amende', 'prison', 'description', 'actif', 'modifie_par', 'modifie_le'],
+  Affaires: ['id', 'date', 'personne', 'infractions', 'amende', 'prison', 'agent', 'lieu', 'description', 'statut', 'modifie_par', 'modifie_le'],
+  Detentions: ['id', 'personne', 'affaire', 'cellule', 'entree', 'sortie_prevue', 'sortie', 'motif', 'statut', 'note', 'modifie_par', 'modifie_le'],
+  Avis: ['id', 'personne', 'signalement', 'motif', 'prime', 'danger', 'statut', 'depuis', 'note', 'modifie_par', 'modifie_le'],
+  Annonces: ['id', 'titre', 'texte', 'epingle', 'grades', 'expire', 'par', 'le', 'modifie_le'],
+  Rapports: ['id', 'mission', 'auteur', 'texte', 'statut', 'remarque', 'valide_par', 'le', 'modifie_le'],
+  Equipements: ['id', 'nom', 'categorie', 'quantite', 'valeur', 'note', 'modifie_par', 'modifie_le'],
+  Prets: ['id', 'equipement', 'membre', 'quantite', 'sortie', 'retour', 'etat', 'retenue', 'retenue_paiement', 'note', 'par', 'le'],
+  Planning: ['id', 'semaine', 'jour', 'creneau', 'poste', 'membres', 'note', 'modifie_par', 'modifie_le'],
+  Lois: ['id', 'numero', 'titre', 'categories', 'texte', 'mots_cles', 'infractions', 'statut', 'date', 'modifie_par', 'modifie_le', 'type'],
   Reglages: ['id', 'valeur'],
   Journal: ['date', 'par', 'action', 'detail']
 };
 
 /** Pages de l'appli dont l'accès se règle par grade (0 = invisible, 1 = lecture, 2 = modification). */
-const PAGES = ['garde', 'missions', 'salaires', 'entreprises', 'thaneries', 'maisons', 'citoyennete', 'tresor', 'comptes', 'journal', 'admin'];
+const PAGES = ['garde', 'missions', 'planning', 'armurerie', 'salaires', 'justice', 'lois', 'prison', 'recherches', 'entreprises', 'thaneries', 'maisons', 'citoyennete', 'tresor', 'bilan', 'annonces', 'comptes', 'journal', 'admin'];
+/** Droits proposés pour les pages ajoutées après coup, tant que le Jarl ne les a pas réglés lui-même pour ce grade. */
+const DROITS_NOUVEAUX = {
+  intendant: { lois: 2, planning: 2, armurerie: 2, justice: 2, prison: 2, recherches: 2, bilan: 2, annonces: 2 },
+  capitaine: { lois: 2, planning: 2, armurerie: 2, justice: 2, prison: 2, recherches: 2, bilan: 1, annonces: 2 },
+  lieutenant: { lois: 1, planning: 2, armurerie: 2, justice: 2, prison: 2, recherches: 2, annonces: 1 },
+  percepteur: { lois: 1, justice: 1, bilan: 1 },
+  sergent: { lois: 1, planning: 1, armurerie: 1, justice: 2, prison: 2, recherches: 2 },
+  garde: { lois: 1, planning: 1, armurerie: 1, justice: 1, prison: 1, recherches: 1 },
+  recrue: { lois: 1, planning: 1, recherches: 1 }
+};
 const REGLAGES_DEFAUT = { taux_defaut: '10', citoyennete: '20', lancement: '' };
 
 // =====================================================================
@@ -56,7 +76,7 @@ function doGet() {
 
 /** Exécute une action. [page, niveau requis, fonction] ; page null = toute personne connectée. */
 const ACTIONS = {
-  donnees: [null, 0, (c) => donnees_(c)],
+  donnees: [null, 0, (c) => { initBareme_(); return donnees_(c); }],
   monMotDePasse: [null, 0, (c, a) => monMotDePasse_(c, a)],
   enregistrerCompte: ['comptes', 2, (c, a) => enregistrerCompte_(c, a)],
   majMembre: ['garde', 2, (c, a) => majMembre_(c, a)],
@@ -77,7 +97,35 @@ const ACTIONS = {
   encaisserCitoyennete: ['citoyennete', 2, (c, a) => encaisserCitoyennete_(c, a)],
   ajouterMouvement: ['tresor', 2, (c, a) => ajouterMouvement_(c, a)],
   annulerPaiement: ['tresor', 2, (c, a) => annulerPaiement_(c, a)],
-  journal: ['journal', 1, () => journalListe_()]
+  journal: ['journal', 1, () => journalListe_()],
+  // Justice
+  enregistrerBareme: ['justice', 2, (c, a) => enregistrerBareme_(c, a)],
+  supprimerBareme: ['justice', 2, (c, a) => supprimerBareme_(c, a)],
+  enregistrerAffaire: ['justice', 2, (c, a) => enregistrerAffaire_(c, a)],
+  supprimerAffaire: ['justice', 2, (c, a) => supprimerAffaire_(c, a)],
+  encaisserAmende: ['justice', 2, (c, a) => encaisserAmende_(c, a)],
+  enregistrerLoi: ['lois', 2, (c, a) => enregistrerLoi_(c, a)],
+  supprimerLoi: ['lois', 2, (c, a) => supprimerLoi_(c, a)],
+  enregistrerDetention: ['prison', 2, (c, a) => enregistrerDetention_(c, a)],
+  libererDetenu: ['prison', 2, (c, a) => libererDetenu_(c, a)],
+  supprimerDetention: ['prison', 2, (c, a) => supprimerDetention_(c, a)],
+  enregistrerAvis: ['recherches', 2, (c, a) => enregistrerAvis_(c, a)],
+  arreterAvis: ['recherches', 2, (c, a) => arreterAvis_(c, a)],
+  supprimerAvis: ['recherches', 2, (c, a) => supprimerAvis_(c, a)],
+  // Communication
+  enregistrerAnnonce: ['annonces', 2, (c, a) => enregistrerAnnonce_(c, a)],
+  supprimerAnnonce: ['annonces', 2, (c, a) => supprimerAnnonce_(c, a)],
+  ecrireRapport: [null, 0, (c, a) => verrou_(() => ecrireRapport_(c, a))],
+  supprimerRapport: [null, 0, (c, a) => verrou_(() => supprimerRapport_(c, a))],
+  validerRapport: ['missions', 2, (c, a) => validerRapport_(c, a)],
+  // Logistique
+  enregistrerEquipement: ['armurerie', 2, (c, a) => enregistrerEquipement_(c, a)],
+  supprimerEquipement: ['armurerie', 2, (c, a) => supprimerEquipement_(c, a)],
+  preter: ['armurerie', 2, (c, a) => preter_(c, a)],
+  retourPret: ['armurerie', 2, (c, a) => retourPret_(c, a)],
+  enregistrerGarde: ['planning', 2, (c, a) => enregistrerGarde_(c, a)],
+  supprimerGarde: ['planning', 2, (c, a) => supprimerGarde_(c, a)],
+  copierPlanning: ['planning', 2, (c, a) => copierPlanning_(c, a)]
 };
 const PUBLIQUES = {
   listeConnexion: () => listeConnexion_(),
@@ -203,7 +251,7 @@ function installer() {
     MEMO_ = {};
     const ss = classeur_();
     if (!lire_('Grades').length) {
-      const T = n => JSON.stringify(PAGES.reduce((o, p) => { o[p] = n[p] !== undefined ? n[p] : (n._ || 0); return o; }, {}));
+      const T = n => JSON.stringify(PAGES.reduce((o, p) => { if (n[p] !== undefined) o[p] = n[p]; else if (n._ !== undefined) o[p] = n._; return o; }, {}));
       [
         ['jarl', 'Jarl', 100, 0, false, '#d4a73a', T({ _: 2 }), true],
         ['intendant', 'Intendant', 90, 300, false, '#8e44ad', T({ _: 2, admin: 0 }), false],
@@ -224,6 +272,7 @@ function installer() {
     if (!lire_('Comptes').some(c => c.grade === 'jarl')) {
       ecrire_('Comptes', { id: uid_('u'), nom: NOM_JARL_DEPART, grade: 'jarl', statut: 'actif', prime: '0', actif: '1', cree_le: maintenant_(), modifie_par: 'installation', modifie_le: maintenant_() });
     }
+    if (!lire_('Bareme').length) { ajouterLignes_('Bareme', baremeDepart_()); PropertiesService.getScriptProperties().setProperty('BAREME_INIT', '1'); }
     journal_('installation', 'Installation', ss.getUrl());
     Logger.log('Base prête : ' + ss.getUrl());
   });
@@ -235,7 +284,8 @@ function installer() {
 function grades_() {
   return lire_('Grades').map(g => {
     let d = {}; try { d = JSON.parse(g.droits || '{}'); } catch (e) { d = {}; }
-    const droits = {}; PAGES.forEach(p => { droits[p] = g.systeme === '1' ? 2 : Math.max(0, Math.min(2, Number(d[p]) || 0)); });
+    const prop = DROITS_NOUVEAUX[g.id] || {};
+    const droits = {}; PAGES.forEach(p => { droits[p] = g.systeme === '1' ? 2 : Math.max(0, Math.min(2, Number(d[p] !== undefined ? d[p] : prop[p]) || 0)); });
     return { id: g.id, nom: g.nom, rang: Number(g.rang) || 0, salaire: Number(g.salaire) || 0, garde: g.garde === '1', couleur: g.couleur || '#7f8c8d', droits, systeme: g.systeme === '1' };
   }).sort((a, b) => b.rang - a.rang);
 }
@@ -329,13 +379,16 @@ function donnees_(c) {
   };
   if (voit('missions')) d.missions = lire_('Missions').map(m => Object.assign(sans_(m), { membres: m.membres ? m.membres.split(',') : [] }));
   else d.missions = lire_('Missions').filter(m => (m.membres || '').split(',').indexOf(c.id) >= 0).map(m => Object.assign(sans_(m), { membres: m.membres.split(',') }));
-  if (voit('entreprises') || voit('thaneries')) d.etablissements = lire_('Etablissements').filter(e => voit(e.categorie === 'thanerie' ? 'thaneries' : 'entreprises')).map(sans_);
-  if (voit('entreprises') || voit('thaneries')) d.declarations = lire_('Declarations').map(sans_);
-  if (voit('maisons')) d.maisons = lire_('Maisons').map(sans_);
-  if (voit('citoyennete')) d.citoyens = lire_('Citoyens').map(sans_);
-  const typesVus = { taxe: voit('entreprises') || voit('thaneries'), loyer_etab: voit('entreprises') || voit('thaneries'), loyer_maison: voit('maisons'), citoyennete: voit('citoyennete'), salaire: voit('salaires') };
+  // la page Bilan a besoin de tout ce qui rapporte ou coûte
+  const bil = voit('bilan');
+  if (voit('entreprises') || voit('thaneries') || bil) d.etablissements = lire_('Etablissements').filter(e => bil || voit(e.categorie === 'thanerie' ? 'thaneries' : 'entreprises')).map(sans_);
+  if (voit('entreprises') || voit('thaneries') || bil) d.declarations = lire_('Declarations').map(sans_);
+  if (voit('maisons') || bil) d.maisons = lire_('Maisons').map(sans_);
+  if (voit('citoyennete') || bil) d.citoyens = lire_('Citoyens').map(sans_);
+  const typesVus = { taxe: voit('entreprises') || voit('thaneries') || bil, loyer_etab: voit('entreprises') || voit('thaneries') || bil, loyer_maison: voit('maisons') || bil, citoyennete: voit('citoyennete') || bil, salaire: voit('salaires') || bil, amende: voit('justice') || bil };
   d.paiements = lire_('Paiements').filter(p => typesVus[p.type] || (p.type === 'salaire' && p.cible === c.id)).map(sans_);
-  if (voit('tresor')) d.tresor = lire_('Tresor').map(sans_);
+  if (voit('tresor') || voit('bilan')) d.tresor = lire_('Tresor').map(sans_);
+  donneesPlus_(c, d, voit);
   return d;
 }
 
@@ -461,7 +514,7 @@ function payer_(qui, type, cible, semaine, montant, libelle, note) {
   if (lire_('Paiements').some(p => p.type === type && p.cible === cible && p.semaine === semaine)) throw new Error('Déjà réglé pour la semaine du ' + semaine.split('-').reverse().join('/') + '.');
   const id = uid_('p');
   const sens = type === 'salaire' ? 'sortie' : 'entree';
-  const cat = { taxe: 'Taxes', loyer_etab: 'Loyers', loyer_maison: 'Loyers', citoyennete: 'Citoyenneté', salaire: 'Salaires' }[type];
+  const cat = { taxe: 'Taxes', loyer_etab: 'Loyers', loyer_maison: 'Loyers', citoyennete: 'Citoyenneté', salaire: 'Salaires', amende: 'Amendes' }[type];
   const t = mouvement_(qui, sens, cat, montant, libelle, semaine, id);
   return ecrire_('Paiements', { id, type, cible, semaine, montant: String(montant), mouvement: t.id, note: texte_(note, 200), par: qui.nom, le: maintenant_() });
 }
@@ -471,6 +524,7 @@ function annulerPaiement_(qui, a) {
   const t = lire_('Tresor').find(x => x.id === p.mouvement);
   if (t) supprimer_('Tresor', [t._ligne]);
   supprimer_('Paiements', [lire_('Paiements').find(x => x.id === p.id)._ligne]);
+  if (p.type === 'salaire') lire_('Prets').filter(x => x.retenue_paiement === p.id).forEach(x => { x.retenue_paiement = ''; ecrire_('Prets', x); });   // la retenue redevient à prélever
   journal_(qui.nom, 'Paiement annulé', p.type + ' ' + p.montant + ' (semaine du ' + p.semaine + ')');
   return donnees_(qui);
 }
@@ -497,8 +551,13 @@ function payerSalaires_(qui, a) {
     if (!g || !g.garde || !s || !s.paye || deja[c.id]) return;
     const m = Math.round((g.salaire + (Number(c.prime) || 0)) * 100) / 100;
     if (!m) return;
-    payer_(qui, 'salaire', c.id, semaine, m, 'Salaire de ' + c.nom + ' (' + g.nom + ')');
-    n++; total += m;
+    // retenues sur solde (équipement perdu ou abîmé) : prélevées tant qu'elles tiennent dans le solde
+    let r = 0; const appliquees = [];
+    lire_('Prets').filter(x => x.membre === c.id && Number(x.retenue) > 0 && !x.retenue_paiement).forEach(x => { const v = Number(x.retenue); if (r + v <= m) { r += v; appliquees.push(x); } });
+    const net = Math.round((m - r) * 100) / 100;
+    const p = payer_(qui, 'salaire', c.id, semaine, net, 'Salaire de ' + c.nom + ' (' + g.nom + ')' + (r ? ' — retenue de ' + r + ' pour équipement' : ''));
+    appliquees.forEach(x => { x.retenue_paiement = p.id; ecrire_('Prets', x); });
+    n++; total += net;
   });
   if (!n) throw new Error('Personne à payer pour cette semaine (déjà payés, en congé ou hors de la garde).');
   journal_(qui.nom, 'Salaires', n + ' membre(s), ' + total + ' septimes, semaine du ' + semaine);
@@ -647,7 +706,7 @@ function demo() {
     const payer = (type, cible, semaine, montant, libelle) => {
       const pid = id('p'), tid = id('t');
       const sens = type === 'salaire' ? 'sortie' : 'entree';
-      const cat = { taxe: 'Taxes', loyer_etab: 'Loyers', loyer_maison: 'Loyers', citoyennete: 'Citoyenneté', salaire: 'Salaires' }[type];
+      const cat = { taxe: 'Taxes', loyer_etab: 'Loyers', loyer_maison: 'Loyers', citoyennete: 'Citoyenneté', salaire: 'Salaires', amende: 'Amendes' }[type];
       tresor.push({ id: tid, date: jour(semaine, entre(0, 4)), semaine, sens, categorie: cat, montant: String(montant), libelle, ref: pid, par: PAR, le: LE });
       paiements.push({ id: pid, type, cible, semaine, montant: String(montant), mouvement: tid, note: '', par: PAR, le: LE });
     };
@@ -761,6 +820,71 @@ function demo() {
     mouv('entree', 'Amendes', 120, 'Contrebande saisie au port', S[4]);
     mouv('sortie', 'Vivres', 95, 'Rations de la garde', S[5]);
 
+    // ---------- Justice ----------
+    const bar = lire_('Bareme'), B = n => bar.find(b => b.nom === n) || { id: '', nom: n, amende: '0', prison: '0' };
+    const affaires = [], detentions = [], avis = [], annonces = [], rapports = [], equipements = [], prets = [], planning = [];
+    // [jours avant aujourd'hui, personne, [infractions], agent, lieu, statut, payée, description]
+    [
+      [20, 'Bjorn le Pêcheur', ['Ivresse sur la voie publique'], 'Eirik', 'Quai Ouest', 'jugee', true, 'Chantait à tue-tête sur le quai en pleine nuit.'],
+      [16, 'Rorik Main-Leste', ['Vol à la tire', 'Refus d\'obtempérer'], 'Solveig', 'Place du Marché', 'jugee', false, 'Pris la main dans la bourse d\'un marchand, a tenté de fuir.'],
+      [12, 'Vigge', ['Contrebande'], 'Hrolf Main-de-Fer', 'Pêcheries', 'ouverte', false, 'Caisses de vin de Cyrodiil non déclarées.'],
+      [9, 'Thorgrim', ['Trouble à l\'ordre public'], 'Torvald Œil-de-Corbeau', 'La Jument Pie', 'jugee', true, 'Rixe à l\'auberge, une table brisée.'],
+      [5, 'Halvar le Borgne', ['Coups et blessures', 'Arme dégainée en ville'], 'Brynja la Rousse', 'Rue des Enclumes', 'jugee', false, 'A blessé un apprenti forgeron au couteau.'],
+      [2, 'Ysolda des Docks', ['Fraude aux taxes'], 'Aldric le Percepteur', 'Comptoir du Port', 'ouverte', false, 'Recettes sous-déclarées trois semaines de suite.']
+    ].forEach(x => {
+      const inf = x[2].map(n => { const b = B(n); return { id: b.id, nom: n, n: 1, amende: Number(b.amende) || 0, prison: Number(b.prison) || 0 }; });
+      const o = { id: id('a'), date: jour(aujourdhui_(), -x[0]), personne: x[1], infractions: JSON.stringify(inf), amende: String(inf.reduce((t, i) => t + i.amende, 0)), prison: String(inf.reduce((t, i) => t + i.prison, 0)),
+        agent: x[3], lieu: x[4], description: x[7], statut: x[5], modifie_par: PAR, modifie_le: LE };
+      affaires.push(o);
+      if (x[6]) payer('amende', o.id, lundi_(o.date), Number(o.amende), 'Amende : ' + o.personne + ' (' + x[2].join(', ') + ')');
+    });
+    const af = n => affaires.find(a => a.personne === n);
+    [
+      ['Rorik Main-Leste', af('Rorik Main-Leste').id, 'Cellule 1', -16, -13, -13, 'Vol à la tire, refus d\'obtempérer', 'libere'],
+      ['Halvar le Borgne', af('Halvar le Borgne').id, 'Cellule 2', -5, -4, '', 'Coups et blessures', 'detenu'],
+      ['Gerdur la Folle', '', 'Cellule 3', -3, 4, '', 'Agression d\'un garde', 'detenu']
+    ].forEach(x => detentions.push({ id: id('j'), personne: x[0], affaire: x[1], cellule: x[2], entree: jour(aujourdhui_(), x[3]), sortie_prevue: jour(aujourdhui_(), x[4]), sortie: x[5] === '' ? '' : jour(aujourdhui_(), x[5]), motif: x[6], statut: x[7], note: '', modifie_par: PAR, modifie_le: LE }));
+    [
+      ['Vigge', 'Grand, barbe rousse, cicatrice à la joue gauche. Navigue sur un esquif noir.', 'Contrebande, fuite par la mer', 200, 'moyen', 'recherche', -12],
+      ['Sven Œil-Noir', 'Chef de bande, cape grise, arc elfique.', 'Embuscade du convoi de minerai', 350, 'eleve', 'recherche', -14],
+      ['Hilde la Rouge', 'Petite, cheveux roux tressés.', 'Vols répétés au marché', 80, 'faible', 'arrete', -25]
+    ].forEach(x => avis.push({ id: id('r'), personne: x[0], signalement: x[1], motif: x[2], prime: String(x[3]), danger: x[4], statut: x[5], depuis: jour(aujourdhui_(), x[6]), note: '', modifie_par: PAR, modifie_le: LE }));
+    // ---------- Annonces et rapports ----------
+    const gardeGr = gs.filter(g => g.garde).map(g => g.id).join(',');
+    [
+      ['Visite du Jarl', 'Le Jarl passera en revue la garde samedi à midi, dans la cour du château. Tenue impeccable exigée.', '1', '', 6],
+      ['Nouvelles rondes de nuit', 'À partir de cette semaine, les remparts nord sont gardés en deux tours de nuit. Consultez le planning.', '', gardeGr, 0],
+      ['Rappel aux percepteurs', 'Les déclarations de recettes doivent être faites avant dimanche soir.', '', 'percepteur,intendant', 0]
+    ].forEach(x => annonces.push({ id: id('n'), titre: x[0], texte: x[1], epingle: x[2], grades: x[3], expire: x[4] ? jour(aujourdhui_(), x[4]) : '', par: 'Hrolf Main-de-Fer', le: LE, modifie_le: LE }));
+    const mi = t => missions.find(m => m.titre === t);
+    rapports.push({ id: id('k'), mission: mi('Escorte du convoi de minerai').id, auteur: qui('Solveig'), texte: 'Embuscade au gué, côté est. Six bandits, dont deux arrêtés. Gunnar touché à la jambe par une flèche. Le chef (cape grise, arc elfique) a fui vers les collines.', statut: 'valide', remarque: 'Bon travail. Avis de recherche lancé pour le chef.', valide_par: 'Hrolf Main-de-Fer', le: LE, modifie_le: LE });
+    rapports.push({ id: id('k'), mission: mi('Enquête sur les vols au port').id, auteur: qui('Brynja'), texte: 'Deux dockers interrogés. Les caisses disparaissent entre la relève de minuit et l\'aube. Piste : une barque sans fanal vue près de l\'Anse des Mouettes.', statut: 'soumis', remarque: '', valide_par: '', le: LE, modifie_le: LE });
+    // ---------- Armurerie ----------
+    [['Épée d\'acier', 'Armes', 14, 45], ['Arc de chasse', 'Armes', 8, 30], ['Bouclier de la garde', 'Protections', 16, 25], ['Cotte de mailles', 'Protections', 10, 70], ['Torche', 'Matériel', 40, 1], ['Menottes', 'Matériel', 12, 8]]
+      .forEach(x => equipements.push({ id: id('q'), nom: x[0], categorie: x[1], quantite: String(x[2]), valeur: String(x[3]), note: '', modifie_par: PAR, modifie_le: LE }));
+    const eq = n => equipements.find(e => e.nom.indexOf(n) === 0).id;
+    [['Épée', 'Hrolf', 1, 'prete', ''], ['Épée', 'Eirik', 1, 'perdu', '30'], ['Arc', 'Solveig', 1, 'prete', ''], ['Bouclier', 'Torvald', 1, 'prete', ''], ['Bouclier', 'Kjell', 1, 'prete', ''], ['Cotte', 'Gunnar', 1, 'abime', '15'], ['Menottes', 'Brynja', 2, 'prete', ''], ['Torche', 'Eirik', 3, 'rendu', '']]
+      .forEach(x => prets.push({ id: id('l'), equipement: eq(x[0]), membre: qui(x[1]), quantite: String(x[2]), sortie: S[1], retour: x[3] === 'prete' ? '' : jour(aujourdhui_(), -3), etat: x[3], retenue: x[4], retenue_paiement: '', note: x[3] === 'perdu' ? 'Tombée dans le fleuve pendant la patrouille.' : '', par: PAR, le: LE }));
+    // ---------- Planning (semaine passée et semaine en cours) ----------
+    [S[4], S[5]].forEach(sem => [
+      [0, 'matin', 'Porte du Val', ['Eirik', 'Astrid']], [0, 'nuit', 'Remparts nord', ['Torvald', 'Kjell']], [1, 'apres_midi', 'Port', ['Solveig', 'Brynja']],
+      [2, 'matin', 'Château', ['Hrolf']], [3, 'nuit', 'Remparts nord', ['Eirik', 'Kjell']], [4, 'matin', 'Porte du Val', ['Astrid', 'Solveig']],
+      [5, 'apres_midi', 'Place du Marché', ['Torvald', 'Eirik']], [6, 'nuit', 'Port', ['Brynja', 'Kjell']]
+    ].forEach(x => planning.push({ id: id('g'), semaine: sem, jour: String(x[0]), creneau: x[1], poste: x[2], membres: x[3].map(qui).join(','), note: '', modifie_par: PAR, modifie_le: LE })));
+    const lois = [
+      ['Art. 1', 'De l\'autorité du Jarl', ['Gouvernement'], 'Le Jarl de Faillaise exerce l\'autorité sur la ville et ses terres. Ses ordres, transmis par l\'intendant ou le capitaine de la garde, ont force de loi.', ['jarl', 'autorité'], [], -60],
+      ['Art. 4', 'Du port des armes en ville', ['Ordre public', 'Armes'], 'Nul ne peut dégainer une arme dans l\'enceinte de la ville, hors légitime défense ou service de la garde. Les armes restent au fourreau dans les tavernes et au marché.', ['arme', 'épée', 'taverne', 'marché'], ['Arme dégainée en ville', 'Coups et blessures'], -60],
+      ['Art. 7', 'De l\'ivresse et du tapage', ['Ordre public'], 'L\'ivresse sur la voie publique et le tapage nocturne sont punis d\'amende. La garde peut retenir l\'ivrogne jusqu\'à ce qu\'il ait dessoûlé.', ['ivresse', 'nuit', 'taverne'], ['Ivresse sur la voie publique', 'Trouble à l\'ordre public'], -60],
+      ['Art. 12', 'Des déclarations de recettes', ['Commerce', 'Fiscalité'], 'Toute entreprise et toute thanerie déclare chaque semaine ses recettes au percepteur, avant le dimanche soir. La taxe due est un pourcentage de ces recettes, fixé par la Châtellerie.\nToute fausse déclaration est une fraude.', ['taxe', 'recettes', 'percepteur', 'déclaration'], ['Fraude aux taxes'], -45],
+      ['Décret 2', 'Des marchandises importées', ['Commerce', 'Port'], 'Les marchandises qui entrent par le port sont déclarées au comptoir. Celles qui sont débarquées en cachette sont saisies au profit de la Châtellerie.', ['port', 'contrebande', 'douane'], ['Contrebande'], -45],
+      ['Art. 20', 'Du vol et du recel', ['Biens'], 'Le voleur rend ce qu\'il a pris ou en paie la valeur, en plus de l\'amende. Celui qui achète sciemment un bien volé est puni comme le voleur.', ['vol', 'recel', 'restitution'], ['Vol', 'Vol à la tire', 'Vol de cheval'], -60],
+      ['Décret 5', 'Du skooma', ['Substances', 'Commerce'], 'Le commerce, la détention et l\'usage du skooma sont interdits dans tout le domaine du Jarl.', ['skooma', 'drogue'], ['Trafic de skooma'], -30],
+      ['Art. 9 (ancien)', 'Du couvre-feu', ['Ordre public'], 'Couvre-feu à la tombée de la nuit pour tous les habitants.', ['nuit', 'couvre-feu'], [], -90, 'abrogee']
+    ].map(x => ({ id: id('w'), numero: x[0], titre: x[1], categories: x[2].join('|'), texte: x[3], mots_cles: x[4].join('|'), infractions: x[5].map(n => B(n).id).filter(Boolean).join(','), statut: x[7] || 'en_vigueur', type: /^Décret/.test(x[0]) ? 'decret' : x[0] === 'Art. 1' ? 'edit' : 'loi', date: jour(aujourdhui_(), x[6]), modifie_par: PAR, modifie_le: LE }));
+    ajouterLignes_('Lois', lois);
+    ajouterLignes_('Affaires', affaires); ajouterLignes_('Detentions', detentions); ajouterLignes_('Avis', avis); ajouterLignes_('Annonces', annonces); ajouterLignes_('Rapports', rapports);
+    ajouterLignes_('Equipements', equipements); ajouterLignes_('Prets', prets); ajouterLignes_('Planning', planning);
+
     ajouterLignes_('Comptes', comptes); ajouterLignes_('Missions', missions); ajouterLignes_('Etablissements', etabs);
     ajouterLignes_('Declarations', decls); ajouterLignes_('Maisons', maisons); ajouterLignes_('Citoyens', citoyens);
     ajouterLignes_('Paiements', paiements); ajouterLignes_('Tresor', tresor);
@@ -775,7 +899,7 @@ function viderDemo() {
   verrou_(() => {
     MEMO_ = {};
     let n = 0;
-    ['Comptes', 'Missions', 'Etablissements', 'Declarations', 'Maisons', 'Citoyens', 'Paiements', 'Tresor'].forEach(t => {
+    ['Comptes', 'Missions', 'Etablissements', 'Declarations', 'Maisons', 'Citoyens', 'Paiements', 'Tresor', 'Lois', 'Affaires', 'Detentions', 'Avis', 'Annonces', 'Rapports', 'Equipements', 'Prets', 'Planning'].forEach(t => {
       const l = lire_(t).filter(estDemo_).map(x => x._ligne);
       if (!l.length) return;
       n += l.length;
@@ -789,4 +913,391 @@ function viderDemo() {
     journal_('Démo', 'Données de démo retirées', n + ' lignes');
     Logger.log(n + ' lignes de démo retirées. Pense à régler « Début du registre » dans Grades et droits.');
   });
+}
+
+// =====================================================================
+//  Petits outils communs aux pages ajoutées
+// =====================================================================
+const entier_ = (v, min, max) => Math.max(min, Math.min(max, Math.round(Number(v) || 0)));
+const ajoutJours_ = (s, j) => { const d = new Date(s + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + j); return d.toISOString().slice(0, 10); };
+function idsMembres_(liste) {
+  const ids = {}; lire_('Comptes').forEach(c => { ids[c.id] = true; });
+  return (Array.isArray(liste) ? liste : []).map(String).filter((x, i, t) => ids[x] && t.indexOf(x) === i);
+}
+function trouver_(table, id, quoi) {
+  const o = lire_(table).find(x => x.id === String(id || ''));
+  if (!o) throw new Error((quoi || 'Élément') + ' introuvable.');
+  return o;
+}
+const json_ = (v, defaut) => { try { const x = JSON.parse(v || ''); return x == null ? defaut : x; } catch (e) { return defaut; } };
+
+/** Ce que les pages ajoutées affichent, selon les droits du compte. */
+function donneesPlus_(c, d, voit) {
+  const today = aujourdhui_(), gestA = niveau_(c, 'annonces') >= 2;
+  // Annonces : chacun voit celles qui s'adressent à son grade (les gestionnaires voient tout, même expiré)
+  d.annonces = lire_('Annonces').map(a => Object.assign(sans_(a), { grades: a.grades ? a.grades.split(',') : [], epingle: a.epingle === '1' }))
+    .filter(a => gestA || estJarl_(c) || ((!a.grades.length || a.grades.indexOf(c.grade) >= 0) && (!a.expire || a.expire >= today)));
+  // Rapports de mission : ceux des missions visibles
+  const mv = {}; (d.missions || []).forEach(m => { mv[m.id] = true; });
+  d.rapports = lire_('Rapports').filter(r => mv[r.mission]).map(sans_);
+  // Justice
+  if (voit('justice')) {
+    d.bareme = lire_('Bareme').map(b => ({ id: b.id, categorie: b.categorie, nom: b.nom, amende: Number(b.amende) || 0, prison: Number(b.prison) || 0, description: b.description, actif: b.actif === '1' }));
+    d.affaires = lire_('Affaires').map(a => Object.assign(sans_(a), { infractions: json_(a.infractions, []), amende: Number(a.amende) || 0, prison: Number(a.prison) || 0 }));
+  }
+  if (voit('lois')) {
+    d.lois = lire_('Lois').map(l => Object.assign(sans_(l), { categories: l.categories ? l.categories.split('|') : [], mots_cles: l.mots_cles ? l.mots_cles.split('|') : [], infractions: l.infractions ? l.infractions.split(',') : [], type: l.type || 'loi' }));
+    if (!d.bareme) d.bareme = lire_('Bareme').map(b => ({ id: b.id, categorie: b.categorie, nom: b.nom, amende: Number(b.amende) || 0, prison: Number(b.prison) || 0, description: b.description, actif: b.actif === '1' }));
+  }
+  if (voit('prison')) d.detentions = lire_('Detentions').map(sans_);
+  if (voit('recherches')) d.avis = lire_('Avis').map(a => Object.assign(sans_(a), { prime: Number(a.prime) || 0 }));
+  // Armurerie : tout pour ceux qui la voient, sinon seulement mes prêts
+  const eqs = lire_('Equipements');
+  const prets = lire_('Prets').filter(p => voit('armurerie') || voit('salaires') || p.membre === c.id);
+  d.prets = prets.map(p => Object.assign(sans_(p), { quantite: Number(p.quantite) || 0, retenue: Number(p.retenue) || 0, nomEquipement: (eqs.find(e => e.id === p.equipement) || {}).nom || '?' }));
+  if (voit('armurerie')) d.equipements = eqs.map(e => Object.assign(sans_(e), { quantite: Number(e.quantite) || 0, valeur: Number(e.valeur) || 0 }));
+  // Planning : tout pour ceux qui le voient, sinon seulement mes gardes
+  d.planning = lire_('Planning').filter(p => voit('planning') || (p.membres || '').split(',').indexOf(c.id) >= 0)
+    .map(p => Object.assign(sans_(p), { jour: Number(p.jour) || 0, membres: p.membres ? p.membres.split(',') : [] }));
+}
+
+// =====================================================================
+//  Justice : barème des crimes, affaires (casier), amendes
+// =====================================================================
+const STATUTS_AFFAIRE = ['ouverte', 'jugee', 'classee'];
+function baremeDepart_() {
+  const L = maintenant_();
+  return [
+    ['Délit mineur', 'Ivresse sur la voie publique', 15, 0, 'Trouble causé par l\'ivresse.'],
+    ['Délit mineur', 'Trouble à l\'ordre public', 25, 0, 'Tapage, bagarre sans blessé, attroupement.'],
+    ['Délit mineur', 'Insulte envers un garde', 20, 0, ''],
+    ['Délit mineur', 'Arme dégainée en ville', 30, 0, 'Menace ou port d\'arme dégainée dans les murs.'],
+    ['Délit mineur', 'Intrusion', 50, 0, 'Entrée sans droit dans une propriété ou un lieu interdit.'],
+    ['Délit', 'Vol à la tire', 50, 1, 'Plus la restitution de ce qui a été pris.'],
+    ['Délit', 'Vol', 100, 2, 'Plus la restitution ou la valeur de ce qui a été volé.'],
+    ['Délit', 'Vol de cheval', 250, 3, ''],
+    ['Délit', 'Coups et blessures', 80, 1, 'Rixe avec blessé.'],
+    ['Délit', 'Dégradation de biens', 75, 0, 'Plus le coût des réparations.'],
+    ['Délit', 'Refus d\'obtempérer', 60, 1, 'Fuite ou refus d\'obéir à un garde.'],
+    ['Délit', 'Contrebande', 150, 2, 'Les marchandises sont saisies.'],
+    ['Délit', 'Fraude aux taxes', 200, 0, 'Recettes non déclarées ou falsifiées.'],
+    ['Crime', 'Agression d\'un garde', 300, 5, ''],
+    ['Crime', 'Évasion', 200, 7, 'S\'ajoute à la peine en cours.'],
+    ['Crime', 'Trafic de skooma', 250, 5, 'La marchandise est saisie et détruite.'],
+    ['Crime', 'Meurtre', 1000, 30, ''],
+    ['Crime', 'Nécromancie', 1500, 30, ''],
+    ['Crime', 'Haute trahison', 2000, 60, 'Atteinte au Jarl ou à la Châtellerie.']
+  ].map(b => ({ id: uid_('b'), categorie: b[0], nom: b[1], amende: String(b[2]), prison: String(b[3]), description: b[4], actif: '1', modifie_par: 'installation', modifie_le: L }));
+}
+/** Installe le barème de départ une seule fois (même si l'appli existait avant cette page). */
+function initBareme_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('BAREME_INIT')) return;
+  verrou_(() => {
+    if (props.getProperty('BAREME_INIT')) return;
+    if (!lire_('Bareme').length) ajouterLignes_('Bareme', baremeDepart_());
+    props.setProperty('BAREME_INIT', '1');
+  });
+}
+function enregistrerBareme_(qui, a) {
+  const tous = lire_('Bareme');
+  const ex = a.id ? trouver_('Bareme', a.id, 'Infraction') : null;
+  const nom = texte_(a.nom, 80);
+  if (!nom) throw new Error('Donnez un nom à l\'infraction.');
+  if (tous.some(x => x !== ex && normal_(x.nom) === normal_(nom))) throw new Error('« ' + nom + ' » existe déjà dans le barème.');
+  const o = ex || { id: uid_('b') };
+  Object.assign(o, { categorie: texte_(a.categorie, 40) || 'Délit', nom, amende: String(montant_(a.amende || 0, 'Amende')), prison: String(entier_(a.prison, 0, 3650)),
+    description: texte_(a.description, 500), actif: a.actif === false ? '' : '1', modifie_par: qui.nom, modifie_le: maintenant_() });
+  ecrire_('Bareme', o);
+  journal_(qui.nom, ex ? 'Barème modifié' : 'Barème : infraction ajoutée', nom + ' — ' + o.amende + ' septimes, ' + o.prison + ' jour(s)');
+  return donnees_(qui);
+}
+function supprimerBareme_(qui, a) {
+  const b = trouver_('Bareme', a.id, 'Infraction');
+  supprimer_('Bareme', [b._ligne]);
+  journal_(qui.nom, 'Barème : infraction supprimée', b.nom);   // les affaires gardent leur copie de l'infraction
+  return donnees_(qui);
+}
+function amendePayee_(id) { return lire_('Paiements').find(p => p.type === 'amende' && p.cible === id); }
+function enregistrerAffaire_(qui, a) {
+  const ex = a.id ? trouver_('Affaires', a.id, 'Affaire') : null;
+  const personne = texte_(a.personne, 60);
+  if (!personne) throw new Error('Indiquez la personne mise en cause.');
+  const bar = lire_('Bareme');
+  const vide = v => v === undefined || v === null || String(v).trim() === '';
+  const inf = (Array.isArray(a.infractions) ? a.infractions : []).slice(0, 20).map(x => {
+    const b = bar.find(y => y.id === String(x && x.id || ''));
+    const nom = texte_((x && x.nom) || (b && b.nom), 80);
+    if (!nom) return null;
+    return { id: b ? b.id : '', nom, n: entier_(x.n || 1, 1, 99),
+      amende: montant_(vide(x.amende) ? (b ? b.amende : 0) : x.amende, 'Amende'), prison: entier_(vide(x.prison) ? (b ? b.prison : 0) : x.prison, 0, 3650) };
+  }).filter(Boolean);
+  if (!inf.length) throw new Error('Choisissez au moins une infraction.');
+  const amende = vide(a.amende) ? inf.reduce((t, x) => t + x.amende * x.n, 0) : montant_(a.amende, 'Amende');
+  const prison = vide(a.prison) ? inf.reduce((t, x) => t + x.prison * x.n, 0) : entier_(a.prison, 0, 3650);
+  if (ex && amendePayee_(ex.id) && Number(ex.amende) !== amende) throw new Error('L\'amende est déjà payée : annulez le paiement dans le Trésor avant de changer son montant.');
+  if (a.incarcerer && prison > 0 && niveau_(qui, 'prison') < 2) throw new Error('Vous n\'avez pas le droit d\'incarcérer (page Prison).');
+  const o = ex || { id: uid_('a') };
+  Object.assign(o, { date: dateValide_(a.date) || aujourdhui_(), personne, infractions: inf, amende: String(Math.round(amende * 100) / 100), prison: String(prison),
+    agent: texte_(a.agent, 60) || qui.nom, lieu: texte_(a.lieu, 80), description: texte_(a.description, 3000),
+    statut: STATUTS_AFFAIRE.indexOf(a.statut) >= 0 ? a.statut : 'ouverte', modifie_par: qui.nom, modifie_le: maintenant_() });
+  ecrire_('Affaires', o);
+  journal_(qui.nom, ex ? 'Affaire modifiée' : 'Affaire enregistrée', personne + ' : ' + inf.map(x => x.nom).join(', ') + ' — ' + o.amende + ' septimes, ' + prison + ' jour(s)');
+  if (a.incarcerer && prison > 0 && !lire_('Detentions').some(dd => dd.affaire === o.id && dd.statut === 'detenu')) {
+    const entree = aujourdhui_();
+    ecrire_('Detentions', { id: uid_('j'), personne, affaire: o.id, cellule: texte_(a.cellule, 40), entree, sortie_prevue: ajoutJours_(entree, prison), sortie: '', motif: inf.map(x => x.nom).join(', ').slice(0, 200), statut: 'detenu', note: '', modifie_par: qui.nom, modifie_le: maintenant_() });
+    journal_(qui.nom, 'Incarcération', personne + ' pour ' + prison + ' jour(s)');
+  }
+  if (a.payee && !amendePayee_(o.id) && amende > 0) encaisserAmende_(qui, { id: o.id });
+  return donnees_(qui);
+}
+function supprimerAffaire_(qui, a) {
+  const af = trouver_('Affaires', a.id, 'Affaire');
+  if (amendePayee_(af.id)) throw new Error('L\'amende de cette affaire est payée : annulez d\'abord le paiement dans le Trésor.');
+  supprimer_('Affaires', [af._ligne]);
+  journal_(qui.nom, 'Affaire supprimée', af.personne + ' (' + af.date + ')');
+  return donnees_(qui);
+}
+function encaisserAmende_(qui, a) {
+  const af = trouver_('Affaires', a.id, 'Affaire');
+  if (amendePayee_(af.id)) throw new Error('Cette amende est déjà payée.');
+  const m = a.montant === undefined || a.montant === null || a.montant === '' ? Number(af.amende) : montant_(a.montant, 'Montant');
+  if (!(m > 0)) throw new Error('Cette affaire n\'a pas d\'amende.');
+  const inf = json_(af.infractions, []).map(x => x.nom).join(', ');
+  payer_(qui, 'amende', af.id, lundi_(aujourdhui_()), m, 'Amende : ' + af.personne + (inf ? ' (' + inf + ')' : ''), a.note);
+  journal_(qui.nom, 'Amende encaissée', af.personne + ' : ' + m + ' septimes');
+  return donnees_(qui);
+}
+
+// ---------- Prison ----------
+function enregistrerDetention_(qui, a) {
+  const ex = a.id ? trouver_('Detentions', a.id, 'Détention') : null;
+  const personne = texte_(a.personne, 60);
+  if (!personne) throw new Error('Indiquez le nom du détenu.');
+  const entree = dateValide_(a.entree) || (ex ? ex.entree : aujourdhui_());
+  const prevue = dateValide_(a.sortie_prevue) || ajoutJours_(entree, entier_(a.jours, 0, 3650));
+  if (prevue < entree) throw new Error('La sortie prévue est avant l\'entrée.');
+  const affaire = a.affaire && lire_('Affaires').some(x => x.id === String(a.affaire)) ? String(a.affaire) : (ex ? ex.affaire : '');
+  const o = ex || { id: uid_('j'), statut: 'detenu', sortie: '' };
+  Object.assign(o, { personne, affaire, cellule: texte_(a.cellule, 40), entree, sortie_prevue: prevue, motif: texte_(a.motif, 200), note: texte_(a.note, 1000), modifie_par: qui.nom, modifie_le: maintenant_() });
+  ecrire_('Detentions', o);
+  journal_(qui.nom, ex ? 'Détention modifiée' : 'Incarcération', personne + ' jusqu\'au ' + prevue);
+  return donnees_(qui);
+}
+function libererDetenu_(qui, a) {
+  const d = trouver_('Detentions', a.id, 'Détention');
+  if (d.statut !== 'detenu') throw new Error('Cette personne n\'est plus en détention.');
+  const evade = !!a.evade;
+  Object.assign(d, { statut: evade ? 'evade' : 'libere', sortie: aujourdhui_(), modifie_par: qui.nom, modifie_le: maintenant_() });
+  ecrire_('Detentions', d);
+  journal_(qui.nom, evade ? 'Évasion' : 'Libération', d.personne);
+  if (evade && a.avis) {
+    if (niveau_(qui, 'recherches') < 2) throw new Error('Évasion enregistrée, mais vous n\'avez pas le droit de créer un avis de recherche.');
+    ecrire_('Avis', { id: uid_('r'), personne: d.personne, signalement: '', motif: 'Évadé de prison' + (d.motif ? ' (' + d.motif + ')' : ''), prime: '0', danger: 'moyen', statut: 'recherche', depuis: aujourdhui_(), note: '', modifie_par: qui.nom, modifie_le: maintenant_() });
+    journal_(qui.nom, 'Avis de recherche', d.personne + ' (évadé)');
+  }
+  return donnees_(qui);
+}
+function supprimerDetention_(qui, a) {
+  const d = trouver_('Detentions', a.id, 'Détention');
+  supprimer_('Detentions', [d._ligne]);
+  journal_(qui.nom, 'Détention supprimée', d.personne);
+  return donnees_(qui);
+}
+
+// ---------- Avis de recherche ----------
+const STATUTS_AVIS = ['recherche', 'arrete', 'abandonne'], DANGERS = ['faible', 'moyen', 'eleve'];
+function enregistrerAvis_(qui, a) {
+  const ex = a.id ? trouver_('Avis', a.id, 'Avis') : null;
+  const personne = texte_(a.personne, 60);
+  if (!personne) throw new Error('Indiquez la personne recherchée.');
+  const o = ex || { id: uid_('r'), depuis: aujourdhui_() };
+  Object.assign(o, { personne, signalement: texte_(a.signalement, 1000), motif: texte_(a.motif, 300), prime: String(montant_(a.prime || 0, 'Prime')),
+    danger: DANGERS.indexOf(a.danger) >= 0 ? a.danger : 'moyen', statut: STATUTS_AVIS.indexOf(a.statut) >= 0 ? a.statut : (ex ? ex.statut : 'recherche'),
+    depuis: dateValide_(a.depuis) || o.depuis, note: texte_(a.note, 1000), modifie_par: qui.nom, modifie_le: maintenant_() });
+  ecrire_('Avis', o);
+  journal_(qui.nom, ex ? 'Avis de recherche modifié' : 'Avis de recherche', personne + (Number(o.prime) ? ' — prime ' + o.prime : ''));
+  return donnees_(qui);
+}
+/** Arrestation : l'avis passe à « arrêté » ; la prime peut être versée (sortie du trésor). */
+function arreterAvis_(qui, a) {
+  const av = trouver_('Avis', a.id, 'Avis');
+  if (av.statut !== 'recherche') throw new Error('Cet avis n\'est plus actif.');
+  const prime = a.verserPrime ? montant_(a.prime === undefined || a.prime === '' ? av.prime : a.prime, 'Prime') : 0;
+  if (prime > 0) {
+    if (niveau_(qui, 'tresor') < 2) throw new Error('Il faut le droit de modifier le Trésor pour verser la prime.');
+    const benef = texte_(a.beneficiaire, 60);
+    mouvement_(qui, 'sortie', 'Primes de capture', prime, 'Prime pour la capture de ' + av.personne + (benef ? ', versée à ' + benef : ''), '', '');
+  }
+  Object.assign(av, { statut: 'arrete', note: texte_([av.note, a.note ? 'Arrestation : ' + a.note : ''].filter(Boolean).join('\n'), 1000), modifie_par: qui.nom, modifie_le: maintenant_() });
+  ecrire_('Avis', av);
+  journal_(qui.nom, 'Arrestation', av.personne + (prime ? ' — prime de ' + prime + ' versée' : ''));
+  return donnees_(qui);
+}
+function supprimerAvis_(qui, a) {
+  const av = trouver_('Avis', a.id, 'Avis');
+  supprimer_('Avis', [av._ligne]);
+  journal_(qui.nom, 'Avis de recherche supprimé', av.personne);
+  return donnees_(qui);
+}
+
+// =====================================================================
+//  Communication : annonces et rapports de mission
+// =====================================================================
+function enregistrerAnnonce_(qui, a) {
+  const ex = a.id ? trouver_('Annonces', a.id, 'Annonce') : null;
+  const titre = texte_(a.titre, 100);
+  if (!titre) throw new Error('Donnez un titre à l\'annonce.');
+  const gs = {}; grades_().forEach(g => { gs[g.id] = true; });
+  const grades = (Array.isArray(a.grades) ? a.grades : []).map(String).filter((g, i, t) => gs[g] && t.indexOf(g) === i);
+  const o = ex || { id: uid_('n'), par: qui.nom, le: maintenant_() };
+  Object.assign(o, { titre, texte: texte_(a.texte, 3000), epingle: a.epingle ? '1' : '', grades: grades.join(','), expire: dateValide_(a.expire), modifie_le: maintenant_() });
+  ecrire_('Annonces', o);
+  journal_(qui.nom, ex ? 'Annonce modifiée' : 'Annonce publiée', titre);
+  return donnees_(qui);
+}
+function supprimerAnnonce_(qui, a) {
+  const n = trouver_('Annonces', a.id, 'Annonce');
+  supprimer_('Annonces', [n._ligne]);
+  journal_(qui.nom, 'Annonce supprimée', n.titre);
+  return donnees_(qui);
+}
+const STATUTS_RAPPORT = ['soumis', 'valide', 'a_revoir'];
+/** Un membre affecté à une mission rédige (ou corrige) son rapport. */
+function ecrireRapport_(qui, a) {
+  const m = trouver_('Missions', a.mission, 'Mission');
+  const gere = niveau_(qui, 'missions') >= 2;
+  if (!gere && (m.membres || '').split(',').indexOf(qui.id) < 0) throw new Error('Seuls les membres affectés à cette mission peuvent écrire un rapport.');
+  const texte = texte_(a.texte, 5000);
+  if (!texte) throw new Error('Le rapport est vide.');
+  const ex = a.id ? trouver_('Rapports', a.id, 'Rapport') : null;
+  if (ex && ex.auteur !== qui.id && !gere) throw new Error('Ce rapport n\'est pas le vôtre.');
+  if (ex && ex.statut === 'valide' && !gere) throw new Error('Ce rapport est déjà validé.');
+  const o = ex || { id: uid_('k'), mission: m.id, auteur: qui.id, le: maintenant_() };
+  Object.assign(o, { texte, statut: 'soumis', remarque: ex ? ex.remarque : '', valide_par: '', modifie_le: maintenant_() });
+  ecrire_('Rapports', o);
+  journal_(qui.nom, ex ? 'Rapport corrigé' : 'Rapport de mission', m.titre);
+  return donnees_(qui);
+}
+function supprimerRapport_(qui, a) {
+  const r = trouver_('Rapports', a.id, 'Rapport');
+  const gere = niveau_(qui, 'missions') >= 2;
+  if (!gere && (r.auteur !== qui.id || r.statut === 'valide')) throw new Error('Vous ne pouvez pas supprimer ce rapport.');
+  supprimer_('Rapports', [r._ligne]);
+  journal_(qui.nom, 'Rapport supprimé', '');
+  return donnees_(qui);
+}
+function validerRapport_(qui, a) {
+  const r = trouver_('Rapports', a.id, 'Rapport');
+  Object.assign(r, { statut: a.statut === 'a_revoir' ? 'a_revoir' : 'valide', remarque: texte_(a.remarque, 500), valide_par: qui.nom, modifie_le: maintenant_() });
+  ecrire_('Rapports', r);
+  const m = lire_('Missions').find(x => x.id === r.mission);
+  journal_(qui.nom, r.statut === 'valide' ? 'Rapport validé' : 'Rapport à revoir', m ? m.titre : '');
+  return donnees_(qui);
+}
+
+// =====================================================================
+//  Logistique : armurerie (stock, prêts, retenues) et planning des gardes
+// =====================================================================
+const enPret_ = id => lire_('Prets').filter(p => p.equipement === id && p.etat === 'prete').reduce((t, p) => t + (Number(p.quantite) || 0), 0);
+function enregistrerEquipement_(qui, a) {
+  const ex = a.id ? trouver_('Equipements', a.id, 'Équipement') : null;
+  const nom = texte_(a.nom, 80);
+  if (!nom) throw new Error('Donnez un nom à l\'équipement.');
+  if (lire_('Equipements').some(x => x !== ex && normal_(x.nom) === normal_(nom))) throw new Error('« ' + nom + ' » existe déjà dans l\'armurerie.');
+  const q = entier_(a.quantite, 0, 100000);
+  if (ex && q < enPret_(ex.id)) throw new Error('Il y en a ' + enPret_(ex.id) + ' en prêt : la quantité ne peut pas être plus petite.');
+  const o = ex || { id: uid_('q') };
+  Object.assign(o, { nom, categorie: texte_(a.categorie, 40), quantite: String(q), valeur: String(montant_(a.valeur || 0, 'Valeur')), note: texte_(a.note, 500), modifie_par: qui.nom, modifie_le: maintenant_() });
+  ecrire_('Equipements', o);
+  journal_(qui.nom, ex ? 'Armurerie : équipement modifié' : 'Armurerie : équipement ajouté', nom + ' × ' + q);
+  return donnees_(qui);
+}
+function supprimerEquipement_(qui, a) {
+  const e = trouver_('Equipements', a.id, 'Équipement');
+  if (enPret_(e.id)) throw new Error('Des pièces sont encore en prêt : faites-les rendre d\'abord.');
+  supprimer_('Equipements', [e._ligne]);
+  journal_(qui.nom, 'Armurerie : équipement retiré', e.nom);
+  return donnees_(qui);
+}
+function preter_(qui, a) {
+  const e = trouver_('Equipements', a.equipement, 'Équipement');
+  const m = lire_('Comptes').find(x => x.id === String(a.membre) && x.actif === '1');
+  if (!m) throw new Error('Choisissez à qui prêter.');
+  const q = entier_(a.quantite || 1, 1, 1000), dispo = (Number(e.quantite) || 0) - enPret_(e.id);
+  if (q > dispo) throw new Error('Il n\'en reste que ' + dispo + ' en stock.');
+  ecrire_('Prets', { id: uid_('l'), equipement: e.id, membre: m.id, quantite: String(q), sortie: dateValide_(a.sortie) || aujourdhui_(), retour: '', etat: 'prete', retenue: '', retenue_paiement: '', note: texte_(a.note, 200), par: qui.nom, le: maintenant_() });
+  journal_(qui.nom, 'Armurerie : prêt', e.nom + ' × ' + q + ' à ' + m.nom);
+  return donnees_(qui);
+}
+/** Retour d'un prêt : rendu, abîmé ou perdu (perdu = retiré du stock). Une retenue sur solde peut être fixée. */
+function retourPret_(qui, a) {
+  const p = trouver_('Prets', a.id, 'Prêt');
+  if (p.etat !== 'prete') throw new Error('Ce prêt est déjà clos.');
+  const etat = ['rendu', 'abime', 'perdu'].indexOf(a.etat) >= 0 ? a.etat : 'rendu';
+  const retenue = etat === 'rendu' ? 0 : montant_(a.retenue || 0, 'Retenue');
+  Object.assign(p, { etat, retour: aujourdhui_(), retenue: retenue ? String(retenue) : '', note: texte_([p.note, a.note].filter(Boolean).join(' — '), 200) });
+  ecrire_('Prets', p);
+  const e = lire_('Equipements').find(x => x.id === p.equipement);
+  if (etat === 'perdu' && e) { e.quantite = String(Math.max(0, (Number(e.quantite) || 0) - (Number(p.quantite) || 0))); ecrire_('Equipements', e); }
+  const m = lire_('Comptes').find(x => x.id === p.membre);
+  journal_(qui.nom, 'Armurerie : retour', (e ? e.nom : '?') + ' — ' + ({ rendu: 'rendu', abime: 'rendu abîmé', perdu: 'perdu' }[etat]) + ' par ' + (m ? m.nom : '?') + (retenue ? ', retenue de ' + retenue + ' sur solde' : ''));
+  return donnees_(qui);
+}
+const CRENEAUX = ['matin', 'apres_midi', 'nuit'];
+function enregistrerGarde_(qui, a) {
+  const ex = a.id ? trouver_('Planning', a.id, 'Garde') : null;
+  const poste = texte_(a.poste, 60);
+  if (!poste) throw new Error('Indiquez le poste (lieu de garde).');
+  const o = ex || { id: uid_('g') };
+  Object.assign(o, { semaine: semaine_(a.semaine), jour: String(entier_(a.jour, 0, 6)), creneau: CRENEAUX.indexOf(a.creneau) >= 0 ? a.creneau : 'matin', poste,
+    membres: idsMembres_(a.membres).join(','), note: texte_(a.note, 300), modifie_par: qui.nom, modifie_le: maintenant_() });
+  ecrire_('Planning', o);
+  journal_(qui.nom, ex ? 'Planning modifié' : 'Planning : garde ajoutée', poste + ' — semaine du ' + o.semaine);
+  return donnees_(qui);
+}
+function supprimerGarde_(qui, a) {
+  const g = trouver_('Planning', a.id, 'Garde');
+  supprimer_('Planning', [g._ligne]);
+  journal_(qui.nom, 'Planning : garde retirée', g.poste);
+  return donnees_(qui);
+}
+/** Recopie les gardes de la semaine précédente sur la semaine choisie (sans créer de doublon). */
+function copierPlanning_(qui, a) {
+  const cible = semaine_(a.semaine), source = ajoutJours_(cible, -7);
+  const tous = lire_('Planning'), deja = {};
+  tous.filter(p => p.semaine === cible).forEach(p => { deja[p.jour + '|' + p.creneau + '|' + normal_(p.poste)] = true; });
+  const neufs = tous.filter(p => p.semaine === source && !deja[p.jour + '|' + p.creneau + '|' + normal_(p.poste)])
+    .map(p => ({ id: uid_('g'), semaine: cible, jour: p.jour, creneau: p.creneau, poste: p.poste, membres: p.membres, note: p.note, modifie_par: qui.nom, modifie_le: maintenant_() }));
+  if (!neufs.length) throw new Error('Rien à recopier : la semaine précédente est vide ou déjà recopiée.');
+  ajouterLignes_('Planning', neufs);
+  journal_(qui.nom, 'Planning recopié', neufs.length + ' garde(s) vers la semaine du ' + cible);
+  return donnees_(qui);
+}
+
+// =====================================================================
+//  Lois : textes, catégories, mots-clés, infractions du barème liées
+// =====================================================================
+const liste_ = (v, max, long) => [...new Set((Array.isArray(v) ? v : String(v || '').split(/[,|\n]/)).map(x => texte_(x, long || 40).replace(/\|/g, ' ')).filter(Boolean))].slice(0, max || 20);
+const TYPES_LOI = ['loi', 'decret', 'edit', 'ordonnance'];
+function enregistrerLoi_(qui, a) {
+  const ex = a.id ? trouver_('Lois', a.id, 'Loi') : null;
+  const titre = texte_(a.titre, 150);
+  if (!titre) throw new Error('Donnez un titre à la loi.');
+  const numero = texte_(a.numero, 30);
+  if (numero && lire_('Lois').some(x => x !== ex && x.statut !== 'abrogee' && normal_(x.numero) === normal_(numero))) throw new Error('Une loi en vigueur porte déjà le numéro « ' + numero + ' ».');
+  const bar = {}; lire_('Bareme').forEach(b => { bar[b.id] = true; });
+  const o = ex || { id: uid_('w') };
+  Object.assign(o, { numero, titre, categories: liste_(a.categories, 12).join('|'), texte: texte_(a.texte, 20000), mots_cles: liste_(a.mots_cles, 30).join('|'),
+    infractions: (Array.isArray(a.infractions) ? a.infractions : []).map(String).filter((x, i, t) => bar[x] && t.indexOf(x) === i).join(','),
+    statut: a.statut === 'abrogee' ? 'abrogee' : 'en_vigueur', date: dateValide_(a.date), type: TYPES_LOI.indexOf(a.type) >= 0 ? a.type : 'loi', modifie_par: qui.nom, modifie_le: maintenant_() });
+  ecrire_('Lois', o);
+  journal_(qui.nom, ex ? 'Loi modifiée' : 'Loi ajoutée', (numero ? numero + ' — ' : '') + titre + (o.statut === 'abrogee' ? ' (abrogée)' : ''));
+  return donnees_(qui);
+}
+function supprimerLoi_(qui, a) {
+  const l = trouver_('Lois', a.id, 'Loi');
+  supprimer_('Lois', [l._ligne]);
+  journal_(qui.nom, 'Loi supprimée', (l.numero ? l.numero + ' — ' : '') + l.titre);
+  return donnees_(qui);
 }
